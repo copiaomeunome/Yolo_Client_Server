@@ -1,0 +1,2 @@
+3.67s: Fone 3 entrou
+4.00s: Fone 3 saiu | duração 0.33s
