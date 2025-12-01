@@ -104,8 +104,6 @@ def recognize():
 
     cap.release()
     cv2.destroyAllWindows()
-
-    # 🔥 APAGAR O ARQUIVO DEPOIS DE USAR
     
 
     return event_log

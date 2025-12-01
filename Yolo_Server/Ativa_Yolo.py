@@ -2,13 +2,11 @@ import os
 import time
 from track_fone import run_recognize
 
-# ====== CONFIGURAÇÕES ======
 PASTA_VIDEOS = r"./uploads/"  # <- ALTERE AQUI
 
 INTERVALO_VERIFICACAO = 5  # em segundos, tempo entre varreduras
 TEMPO_ESPERA_ARQUIVO = 2   # segundos para verificar se o arquivo terminou de ser escrito
 NUM_CHECAGENS_TAMANHO = 3  # quantas vezes conferir se o tamanho estabilizou
-# ===========================
 
 
 def arquivo_pronto(caminho_arquivo: str) -> bool:
