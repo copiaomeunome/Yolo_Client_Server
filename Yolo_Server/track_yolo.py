@@ -5,8 +5,8 @@ import os
 
 def recognize():
 
-    coco_model = YOLO("yolo12m.pt")
-    custom_model = YOLO("runs/detect/train3/weights/best.pt")
+    #coco_model = YOLO("yolo12m.pt")
+    custom_model = YOLO(r"C:\Users\luiza\OneDrive\Desktop\yolo_server_client\treinos\DataSetYolo\runs\detect\train\weights\best.pt")
 
     video_path = "uploads\saida.mp4"
     cap = cv2.VideoCapture(video_path)
@@ -25,7 +25,7 @@ def recognize():
         #tempo do vídeo
         current_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0  # segundos
 
-        coco_results = coco_model(frame, stream=True)
+        #coco_results = coco_model(frame, stream=True)
         fone_results = custom_model.track(
             frame,
             tracker="botsort_custom.yaml", #botsort_custom
@@ -34,14 +34,14 @@ def recognize():
         )
 
         #COCO
-        for r in coco_results:
-            for box in r.boxes:
-                x1,y1,x2,y2 = map(int, box.xyxy[0])
-                label = coco_model.names[int(box.cls[0])]
-                conf = float(box.conf[0])
-                cv2.rectangle(frame, (x1,y1), (x2,y2), (255,255,0), 2)
-                cv2.putText(frame, f"{label} {conf:.2f}", (x1,y1-5),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,0), 2)
+        # for r in coco_results:
+        #     for box in r.boxes:
+        #         x1,y1,x2,y2 = map(int, box.xyxy[0])
+        #         label = coco_model.names[int(box.cls[0])]
+        #         conf = float(box.conf[0])
+        #         cv2.rectangle(frame, (x1,y1), (x2,y2), (255,255,0), 2)
+        #         cv2.putText(frame, f"{label} {conf:.2f}", (x1,y1-5),
+        #                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,0), 2)
 
         #FONE
         current_fone_ids = set()
@@ -57,24 +57,24 @@ def recognize():
                 conf = float(box.conf[0])
                 x1,y1,x2,y2 = map(int, box.xyxy[0])
 
-                if label.lower() != "fone":
-                    cv2.rectangle(frame, (x1,y1), (x2,y2), (0,165,255), 2)
-                    cv2.putText(frame, f"{label} {conf:.2f}", (x1,y1-5),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,165,255), 2)
-                    continue
+                # if label.lower() != "fone":
+                #     cv2.rectangle(frame, (x1,y1), (x2,y2), (0,165,255), 2)
+                #     cv2.putText(frame, f"{label} {conf:.2f}", (x1,y1-5),
+                #                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,165,255), 2)
+                #     continue
 
                 # rastrear fone
                 obj_id = int(box.id[0])
                 current_fone_ids.add(obj_id)
 
                 cv2.rectangle(frame, (x1,y1), (x2,y2), (0,255,0), 2)
-                cv2.putText(frame, f"Fone ID {obj_id}", (x1,y1-5),
+                cv2.putText(frame, f"{label} ID {obj_id}", (x1,y1-5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
 
                 if obj_id not in fone_enter_time:
                     fone_enter_time[obj_id] = current_time
 
-                    msg = f"{current_time:.2f}s: Fone {obj_id} entrou"
+                    msg = f"{current_time:.2f}s: {label} {obj_id} entrou na pos ({x1}, {y1})({x2}, {y2})"
                     print("[+]", msg)
                     event_log.append(msg)
 
@@ -87,7 +87,7 @@ def recognize():
                 saida = current_time
                 duracao = saida - entrada
 
-                msg = f"{saida:.2f}s: Fone {obj_id} saiu | duração {duracao:.2f}s"
+                msg = f"{saida:.2f}s: {label} {obj_id} saiu | duração {duracao:.2f}s"
                 print("[-]", msg)
 
                 events.append((obj_id, entrada, saida, duracao))

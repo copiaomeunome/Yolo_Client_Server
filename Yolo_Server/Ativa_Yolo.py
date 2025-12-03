@@ -1,6 +1,6 @@
 import os
 import time
-from track_fone import run_recognize
+from track_yolo import run_recognize
 
 PASTA_VIDEOS = r"./uploads/"  # <- ALTERE AQUI
 
@@ -62,7 +62,7 @@ def remover_arquivo(caminho_arquivo: str) -> None:
         os.remove("uploads\saida.mp4")
         print(f"\nArquivo uploads\saida.mp4' removido com sucesso!")
     except Exception as e:
-        print(f"\nErro ao remover '{video_path}': {e}")
+        print(f"\nErro ao remover arquivo: {e}")
 
 
 def monitorar_pasta():
