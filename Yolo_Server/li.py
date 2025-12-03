@@ -63,7 +63,7 @@ def analyze_log(log_data):
 
     timestamps = sorted(
         log_data.keys(),
-        key=lambda t: tuple(map(int, t.split(":")))
+        key=lambda t: tuple(float(x) for x in t.split(":"))
     )
 
     result = {}

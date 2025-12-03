@@ -2,6 +2,7 @@ import os
 import time
 from track_yolo import run_recognize
 from li import log_interpreter
+from api_gpt import callOpenAI
 
 PASTA_VIDEOS = r"./uploads/"  # <- ALTERE AQUI
 
@@ -47,7 +48,8 @@ def enviar_arquivo(caminho_arquivo: str) -> bool:
         with open(caminho_arquivo, "rb") as f:
             files = {"file": (nome_arquivo, f, "video/mp4")}
             run_recognize()
-            log_interpreter("Yolo_Server/log_output.json", "Yolo_Server/scene_description.json")
+            log_interpreter("./log_output.json", "./scene_description.json")
+            callOpenAI()
             return True
 
 
