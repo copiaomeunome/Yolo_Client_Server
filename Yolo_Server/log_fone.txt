@@ -1,6 +1,0 @@
-1.33s: Rock 2 entrou na pos (244, 252)(333, 343)
-1.67s: Rock 4 entrou na pos (459, 284)(568, 416)
-2.00s: Scissors 2 saiu | duração 0.67s
-3.00s: Scissors 2 entrou na pos (233, 252)(401, 347)
-3.33s: Paper 4 saiu | duração 1.67s
-3.67s: Paper 2 saiu | duração 0.67s
