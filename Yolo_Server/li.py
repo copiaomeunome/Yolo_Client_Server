@@ -60,7 +60,11 @@ def analyze_log(log_data):
     Receives the original log (a dict) and returns a new dict:
     { timestamp: [event descriptions...] }
     """
-    timestamps = sorted(log_data.keys())
+
+    timestamps = sorted(
+        log_data.keys(),
+        key=lambda t: tuple(map(int, t.split(":")))
+    )
 
     result = {}
     prev_objects = {}
@@ -71,7 +75,6 @@ def analyze_log(log_data):
         frame = log_data[t]
         events = []
 
-        # Build map of objects in this frame
         objects = {}
         for category, objs in frame.items():
             for o in objs:
@@ -82,7 +85,6 @@ def analyze_log(log_data):
         current_keys = set(objects.keys())
         prev_keys = set(prev_objects.keys())
 
-        # 1) Entries and exits
         entered = current_keys - prev_keys
         exited = prev_keys - current_keys
 
@@ -92,7 +94,6 @@ def analyze_log(log_data):
         for cat, oid in sorted(exited):
             events.append(f"{cat} {oid} left the scene.")
 
-        # 2) Overlaps and horizontal alignments
         keys = list(objects.keys())
         overlaps = set()
         alignments = set()
@@ -104,32 +105,26 @@ def analyze_log(log_data):
                 box1 = objects[k1]
                 box2 = objects[k2]
 
-                # Overlap check
                 if boxes_overlap(box1, box2):
                     pair = frozenset((k1, k2))
                     overlaps.add(pair)
 
-                # Horizontal alignment check
                 if horizontally_aligned(box1, box2):
                     pair = frozenset((k1, k2))
                     alignments.add(pair)
 
-        # 3) New overlaps
         for pair in overlaps - prev_overlaps:
             (cat1, id1), (cat2, id2) = sorted(list(pair))
             events.append(f"{cat1} {id1} is overlapping {cat2} {id2}.")
 
-        # 4) Overlaps that ended
         for pair in prev_overlaps - overlaps:
             (cat1, id1), (cat2, id2) = sorted(list(pair))
             events.append(f"{cat1} {id1} stopped overlapping {cat2} {id2}.")
 
-        # 5) New horizontal alignments
         for pair in alignments - prev_alignments:
             (cat1, id1), (cat2, id2) = sorted(list(pair))
             events.append(f"{cat1} {id1} is horizontally aligned with {cat2} {id2}.")
 
-        # 6) Horizontal alignments that ended
         for pair in prev_alignments - alignments:
             (cat1, id1), (cat2, id2) = sorted(list(pair))
             events.append(
@@ -174,4 +169,4 @@ def log_interpreter(input_log: str, output_log: str):
     with open(output_log, "w", encoding="utf-8") as f:
         json.dump(analyzed, f, indent=2, ensure_ascii=False)
 
-    print(f"Analysis complete. Output saved to: {args.output}")
+    print(f"Analysis complete. Output saved to: {output_log}")
