@@ -48,7 +48,9 @@ def enviar_arquivo(caminho_arquivo: str) -> bool:
         with open(caminho_arquivo, "rb") as f:
             files = {"file": (nome_arquivo, f, "video/mp4")}
             run_recognize()
+            print("passou")
             log_interpreter("./log_output.json", "./scene_description.json")
+
             callOpenAI()
             return True
 

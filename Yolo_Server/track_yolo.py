@@ -41,11 +41,21 @@ def recognize():
                 continue
 
             for box in r.boxes:
+                if box.cls is None or len(box.cls) == 0:
+                    continue
+                if box.conf is None or len(box.conf) == 0:
+                    continue
+                if box.xyxy is None or len(box.xyxy) == 0:
+                    continue
+                if box.id is None or len(box.id) == 0:
+                    continue
+
                 cls = int(box.cls[0])
-                label = custom_model.names[cls]
+                label = custom_model.names[int(cls)]
                 conf = float(box.conf[0])
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 obj_id = int(box.id[0])
+
                 
                 current_ids.add(obj_id)
                 object_classes[obj_id] = label # Salva a classe deste ID

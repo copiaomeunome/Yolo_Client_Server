@@ -141,9 +141,9 @@ def analyze_log(log_data):
     return result
 
 def log_interpreter(input_log: str, output_log: str):
+    
     with open(input_log, "r", encoding="utf-8") as f:
         log_data = json.load(f)
-
     if isinstance(log_data, list):
 
         if "timestamp" in log_data[0]:

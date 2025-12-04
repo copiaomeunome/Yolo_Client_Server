@@ -4,7 +4,7 @@ import requests
 
 # ====== CONFIGURAÇÕES ======
 PASTA_VIDEOS = r"./"  # <- ALTERE AQUI
-URL_DESTINO = "http://192.168.1.57:8000/upload"  # <- ALTERE AQUI
+URL_DESTINO = "http://192.168.1.7:8000/upload"  # <- ALTERE AQUI
 
 INTERVALO_VERIFICACAO = 5  # em segundos, tempo entre varreduras
 TEMPO_ESPERA_ARQUIVO = 2   # segundos para verificar se o arquivo terminou de ser escrito
