@@ -1,122 +1,106 @@
-from ultralytics import YOLO
+
+import os
+import platform
 import cv2
-import time
 import json
+import time
+from ultralytics import YOLO
 
-def recognize():
-    #COLOQUE O CAMINHO AQUI
-    custom_model = YOLO(r"C:\Users\heito\OneDrive\Desktop\dev13\DataSetYolo\runs\detect\train\weights\best.pt")
+def recognize(show=False):
 
-    video_path = "uploads\saida.mp4"
+    SO = platform.system()
+
+    if SO == "Windows":
+        model_path = r"C:\Users\heito\OneDrive\Desktop\dev13\DataSetYolo\runs\detect\train\weights\best.pt"
+        video_path = r"uploads\saida.mp4"
+    else:
+        # Ajuste para seu Linux/VM
+        model_path = "/home/ubuntu/DataSetYolo/runs/detect/train/weights/best.pt"
+        video_path = "/home/ubuntu/Yolo_Server/uploads/saida.mp4"
+
+    model_path = os.path.normpath(model_path)
+    video_path = os.path.normpath(video_path)
+
+    print(f"[INFO] Sistema detectado: {SO}")
+    print(f"[INFO] Usando modelo: {model_path}")
+    print(f"[INFO] Usando vídeo: {video_path}")
+
+    custom_model = YOLO(model_path)
     cap = cv2.VideoCapture(video_path)
 
+    if not cap.isOpened():
+        raise RuntimeError(f"Erro ao abrir vídeo: {video_path}")
+
     enter_time = {}
-    object_classes = {} # Para lembrar qual é a classe do ID (ex: 1 = person)
+    object_classes = {}
+    full_log_snapshots = []
     
-    full_log_snapshots = [] 
-
-    start_time = time.time()
-
     while True:
         ret, frame = cap.read()
         if not ret:
-            break  # fim do vídeo
+            break
 
-        current_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0 
+        current_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
 
-        results = custom_model.track(
+        results_stream = custom_model.track(
             frame,
-            tracker="botsort_custom.yaml", 
+            tracker="botsort_custom.yaml",
             stream=True,
             persist=True,
             verbose=False
         )
 
         current_ids = set()
-        
-        frame_objects = {} 
+        frame_objects = {}
 
-        for r in results:
+        for r in results_stream:
             if r.boxes.id is None:
                 continue
 
             for box in r.boxes:
-                if box.cls is None or len(box.cls) == 0:
-                    continue
-                if box.conf is None or len(box.conf) == 0:
-                    continue
-                if box.xyxy is None or len(box.xyxy) == 0:
-                    continue
-                if box.id is None or len(box.id) == 0:
+                if len(box.cls) == 0 or len(box.conf) == 0 or len(box.xyxy) == 0 or len(box.id) == 0:
                     continue
 
                 cls = int(box.cls[0])
-                label = custom_model.names[int(cls)]
-                conf = float(box.conf[0])
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
                 obj_id = int(box.id[0])
+                label = custom_model.names[cls]
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                
                 current_ids.add(obj_id)
-                object_classes[obj_id] = label # Salva a classe deste ID
-
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(frame, f"{label} ID {obj_id}", (x1, y1 - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                object_classes[obj_id] = label
 
                 pos_str = f"({x1},{y1}),({x2},{y2})"
-                
-                obj_data = {
+
+                frame_objects.setdefault(label, []).append({
                     "ID": obj_id,
                     "pos": pos_str
-                }
-
-                if label not in frame_objects:
-                    frame_objects[label] = []
-                frame_objects[label].append(obj_data)
+                })
 
                 if obj_id not in enter_time:
                     enter_time[obj_id] = current_time
                     print(f"[+] {current_time:.2f}s: {label} {obj_id} entrou.")
 
         if frame_objects:
-            timestamp_key = f"{current_time:.2f}"
-            snapshot = { timestamp_key: frame_objects }
-            full_log_snapshots.append(snapshot)
+            full_log_snapshots.append({f"{current_time:.2f}": frame_objects})
 
-        ids_to_remove = []
+        # Detect exits
         for obj_id in list(enter_time.keys()):
             if obj_id not in current_ids:
                 entrada = enter_time[obj_id]
-                saida = current_time
-                duracao = saida - entrada
-                
+                duracao = current_time - entrada
                 lbl = object_classes.get(obj_id, "Unknown")
-                
-                print(f"[-] {saida:.2f}s: {lbl} {obj_id} saiu | duração {duracao:.2f}s")
-                ids_to_remove.append(obj_id)
 
-        for obj_id in ids_to_remove:
-            del enter_time[obj_id]
+                print(f"[-] {current_time:.2f}s: {lbl} {obj_id} saiu | duração {duracao:.2f}s")
+                del enter_time[obj_id]
 
-        cv2.imshow("YOLO + ByteTrack", frame)
-        if cv2.waitKey(1) == 27: #27 = ESC
-            break
+        # SHOW only if requested (for headless safety)
+        if show:
+            cv2.imshow("YOLO Tracking", frame)
+            if cv2.waitKey(1) == 27:
+                break
 
     cap.release()
-    cv2.destroyAllWindows()
+    if show:
+        cv2.destroyAllWindows()
 
     return full_log_snapshots
-
-def run_recognize():
-    log_data = recognize() 
-
-    print("\n-------------------------------------------------\nSalvando LOG em JSON")
-
-    with open("log_output.json", "w") as f:
-        json.dump(log_data, f, indent=4)
-
-    print("Arquivo 'log_output.json' salvo com sucesso!")
-
-if __name__ == "__main__":
-    run_recognize()
