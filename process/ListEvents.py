@@ -61,29 +61,27 @@ def funcObservaSinalVermelho(video):
 def funcDetectaEntradasESaidas(video):
     eventos = []
 
-    prev_objects = set()  # (nome, id)
+    first_seen = {}
+    last_seen = {}
 
     for frame in video.frames:
         t = frame.time
+        for obj in frame.objects:
+            key = (obj.nome, obj.id)
+            if key not in first_seen:
+                first_seen[key] = t
+            last_seen[key] = t
 
-        current_objects = {(obj.nome, obj.id) for obj in frame.objects}
-
-        entered = current_objects - prev_objects
-        exited = prev_objects - current_objects
-
-        for nome, oid in entered:
-            eventos.append(Event(t, t, f"{nome} {oid} entrou na cena"))
-
-        for nome, oid in exited:
-            eventos.append(Event(t, t, f"{nome} {oid} saiu da cena"))
-
-        prev_objects = current_objects
+    for (nome, oid), start in first_seen.items():
+        end = last_seen.get((nome, oid), start)
+        eventos.append(Event(start, end, f"{nome} {oid} tempo em cena"))
 
     return eventos
 def funcDetectaAlinhamentos(video):
     eventos = []
 
     prev_align = set()
+    align_start = {}
 
     for frame in video.frames:
         t = frame.time
@@ -103,27 +101,37 @@ def funcDetectaAlinhamentos(video):
                     align.add(frozenset((k1, k2)))
 
         for pair in align - prev_align:
-            items = list(pair)
-            if len(items) != 2:
-                continue
-            (cat1, id1), (cat2, id2) = sorted(items)
-            eventos.append(Event(t, t, f"{cat1} {id1} alinhado com {cat2} {id2}"))
+            align_start[pair] = t
 
         for pair in prev_align - align:
+            start_time = align_start.pop(pair, t)
             items = list(pair)
             if len(items) != 2:
                 continue
             (cat1, id1), (cat2, id2) = sorted(items)
-            eventos.append(Event(t, t, f"{cat1} {id1} deixou de alinhar com {cat2} {id2}"))
-
+            eventos.append(Event(start_time, t, f"{cat1} {id1} tempo de alinhamento com {cat2} {id2}"))
 
         prev_align = align
 
+    # Fecha alinhamentos em andamento ate o ultimo frame
+    if video.frames:
+        final_time = video.frames[-1].time
+        for pair in prev_align:
+            start_time = align_start.pop(pair, final_time)
+            items = list(pair)
+            if len(items) != 2:
+                continue
+            (cat1, id1), (cat2, id2) = sorted(items)
+            eventos.append(Event(start_time, final_time, f"{cat1} {id1} tempo de alinhamento com {cat2} {id2}"))
+
     return eventos
+
+
 def funcDetectaOverlap(video):
     eventos = []
 
     prev_over = set()
+    overlap_start = {}
 
     for frame in video.frames:
         t = frame.time
@@ -143,21 +151,28 @@ def funcDetectaOverlap(video):
                     over.add(frozenset((k1, k2)))
 
         for pair in over - prev_over:
-            items = list(pair)
-            if len(items) != 2:
-                continue
-            (cat1, id1), (cat2, id2) = sorted(items)
-            eventos.append(Event(t, t, f"{cat1} {id1} sobrepôs {cat2} {id2}"))
+            overlap_start[pair] = t
 
         for pair in prev_over - over:
+            start_time = overlap_start.pop(pair, t)
             items = list(pair)
             if len(items) != 2:
                 continue
             (cat1, id1), (cat2, id2) = sorted(items)
-            eventos.append(Event(t, t, f"{cat1} {id1} deixou de sobrepor {cat2} {id2}"))
-
+            eventos.append(Event(start_time, t, f"{cat1} {id1} tempo de sobreposicao com {cat2} {id2}"))
 
         prev_over = over
+
+    # Fecha sobreposicoes em andamento ate o ultimo frame
+    if video.frames:
+        final_time = video.frames[-1].time
+        for pair in prev_over:
+            start_time = overlap_start.pop(pair, final_time)
+            items = list(pair)
+            if len(items) != 2:
+                continue
+            (cat1, id1), (cat2, id2) = sorted(items)
+            eventos.append(Event(start_time, final_time, f"{cat1} {id1} tempo de sobreposicao com {cat2} {id2}"))
 
     return eventos
 

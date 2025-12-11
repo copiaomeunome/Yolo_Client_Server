@@ -6,6 +6,22 @@ import cv2
 import time
 
 def recognize(video_path, custom_model):
+    # COCO/YOLO default classes (v8/11/12 family) as fallback to custom names
+    COCO_CLASSES = [
+        "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
+        "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
+        "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra",
+        "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
+        "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove",
+        "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
+        "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
+        "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
+        "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse",
+        "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
+        "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
+        "hair drier", "toothbrush"
+    ]
+
     cap = cv2.VideoCapture(video_path)
 
     width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -47,13 +63,34 @@ def recognize(video_path, custom_model):
                     continue
 
                 cls = int(box.cls[0])
-                label = custom_model.names[int(cls)]
+                # Prioriza nomes customizados e cai para classes default do YOLO
+                if hasattr(custom_model, "names") and cls in custom_model.names:
+                    label = custom_model.names[int(cls)]
+                elif cls < len(COCO_CLASSES):
+                    label = COCO_CLASSES[cls]
+                else:
+                    label = f"class_{cls}"
                 conf = float(box.conf[0])
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 obj_id = int(box.id[0])
 
+                # Desenha bounding box com label e ID na imagem exibida
+                color = (0, 255, 0)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                text = f"{label} {obj_id}"
+                cv2.putText(
+                    frame,
+                    text,
+                    (x1, max(y1 - 10, 0)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    color,
+                    2,
+                    cv2.LINE_AA,
+                )
+
                 # cria Object()
-                obj = Object(obj_id, x1, y1, x2, y2, label)
+                obj = Object(x1, y1, x2, y2, label, obj_id)
                 detected_objects.append(obj)
 
                 object_classes[obj_id] = label

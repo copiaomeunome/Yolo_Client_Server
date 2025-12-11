@@ -2,6 +2,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import json
+from classes.Events import Event
 
 load_dotenv()
 
@@ -11,15 +12,11 @@ client = OpenAI(api_key=openai_key)
 
 def convert_events_to_json(events):
     """
-    Converte a lista de objetos Event em um JSON estrutural
-    parecido com o log antigo, mas simples e direto:
-
+    Converte a lista de objetos Event em um JSON simples:
     [
-      { "tInit": 0.00, "tEnd": 0.00, "name": "Rock 1 entered the scene." },
-      { "tInit": 0.05, "tEnd": 0.05, "name": "Rock 1 aligned with Paper 2." }
+      { "tInit": 0.00, "tEnd": 5.00, "name": "trabalhador 1 tempo em cena" }
     ]
     """
-
     converted = []
 
     for ev in events:
@@ -44,37 +41,48 @@ def build_payload(events):
     # Transformamos em string JSON bonitinha
     log_as_text = json.dumps(log_struct, indent=2, ensure_ascii=False)
 
-    SYSTEM_PROMPT = """ 
-    You are a log analyzer for the game Rock-Paper-Scissors.
+    SYSTEM_PROMPT = """
+    You are a safety log analyst.
 
-    Your task is: given a LOG in JSON format (received in the user message), 
-    identify all moves that occurred between pairs of objects and return a JSON ARRAY,
-    where each element describes the result of one move.
+    Goal: Given a JSON log of time-stamped events (Portuguese event names), decide for each worker if they wore required PPE (e.g., helmet/vest/gloves/eye protection) for most of their time in the scene. Use only the evidence in the log. Return a JSON array; no extra text.
 
-    DEFINITIONS:
-    - Objects follow the format "<Type> <id>", where Type ∈ {Rock, Paper, Scissor}.
-    - Possible events:
-      • "<Type> <id> entered the scene."
-      • "<Type> <id> left the scene."
-      • "<TypeA> <idA> is horizontally aligned with <TypeB> <idB>."
-      • "<TypeA> <idA> is no longer horizontally aligned with <TypeB> <idB>."
+    EVENT SCHEMA (names appear in Portuguese exactly as below):
+    - "<obj> <id> tempo em cena" -> object existed from tInit to tEnd in that interval.
+    - "<objA> <idA> alinhado com <objB> <idB>" -> centers horizontally aligned at that instant.
+    - "<objA> <idA> deixou de alinhar com <objB> <idB>" -> alignment ended.
+    - "<objA> <idA> sobrepos <objB> <idB>" -> bounding boxes overlap at that instant.
+    - "<objA> <idA> deixou de sobrepor <objB> <idB>" -> overlap ended.
+    - "Sinal vermelho saiu pelo topo (ID X)" -> red light object X disappeared (may be irrelevant for PPE).
 
-    MOVE DETECTION RULES:
-      (mesmo conteúdo original aqui...)
+    OBJECT NAMES:
+    - Workers likely appear as "trabalhador <id>" (or similar human labels).
+    - PPE items may appear as "capacete", "colete", "luva", "oculos", etc.
 
-    FINAL RESPONSE FORMAT:
-    - Always return a JSON ARRAY.
-    - No text outside the JSON array.
+    INTERPRETATION RULES FOR PPE:
+    1) A worker's time in scene is the duration from their "tempo em cena" event tInit to tEnd.
+    2) Evidence that a worker is wearing/holding PPE is overlap or alignment events between the worker and a PPE object during that time window.
+    3) If PPE evidence spans most (>50%) of the worker's time in scene, mark as wearing PPE. If clear lack for most of the time, mark as not wearing. Otherwise mark as inconclusive.
+    4) Prefer overlap over mere alignment as stronger evidence that the PPE is being worn.
+    5) If no PPE objects are present for that worker, default to "not wearing" unless the log is clearly incomplete, in which case "inconclusive".
+
+    OUTPUT FORMAT:
+    Return a JSON array; one object per worker, with:
+    - "worker": string with worker name and id (e.g., "trabalhador 7").
+    - "wearing_ppe_majority": true | false | "inconclusive".
+    - "evidence": minimal list of event strings (from the log) that support the decision, ordered by time.
+    - "notes": short justification (one sentence).
+
+    No other text besides the JSON array.
     """
 
     user_message = f"""
-    Here is the full log extracted from the video analysis.
-    Identify each move, determine the winner, and return the results in JSON format.
+    Here is the full event log extracted from the video analysis (JSON array).
+    Decide for each worker whether they wore PPE for most of their time in the scene, following the rules above, and respond only with the JSON array in the required format.
 
     Log:
     {log_as_text}
     """
-
+    print(log_as_text)
     return {
         "model": "gpt-4.1-mini",
         "messages": [
@@ -107,16 +115,13 @@ def callOpenAI(events):
 # Exemplo de uso com LISTA de Event():
 if __name__ == "__main__":
 
-    class Event:
-        def __init__(self, tInit, tEnd, name):
-            self.tInit = tInit
-            self.tEnd = tEnd
-            self.name = name
+    
 
     exemplo = [
-        Event(0.00, 0.00, "Rock 1 entered the scene."),
-        Event(0.00, 0.00, "Paper 2 entered the scene."),
-        Event(0.05, 0.05, "Rock 1 is horizontally aligned with Paper 2."),
+        Event(0.00, 10.00, "trabalhador 1 tempo em cena"),
+        Event(0.00, 8.00, "capacete 1 tempo em cena"),
+        Event(0.50, 0.50, "trabalhador 1 sobrepos capacete 1"),
+        Event(5.00, 5.00, "trabalhador 1 alinhado com capacete 1"),
     ]
 
-    callOpenAI(exemplo)
+    #callOpenAI(exemplo)
