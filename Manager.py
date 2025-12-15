@@ -1,9 +1,11 @@
-from process.Yolo_Inference import recognize
+from python.processPy.Yolo_Inference import recognize
 from ultralytics import YOLO
-from process.ListEvents import ListEvents
-from process.Call_OpenAI import callOpenAI
+from python.processPy.ListEvents import ListEvents
+from python.processPy.Call_OpenAI import callOpenAI
 
 if __name__ == "__main__":
-    video = recognize("uploads/Vídeo_de_Trabalhador_da_CEMIG.mp4", YOLO(r"C:\Users\heito\OneDrive\Desktop\dev13\DataSetYolo\runs\detect\train\weights\best.pt"))
+    custom_model = YOLO(r"C:\Users\heito\OneDrive\Desktop\dev13\DataSetYolo\runs\detect\train\weights\best.pt")
+    # lane_model = YOLO("yolov8n-seg.pt")  # modelo de segmentacao para faixas continuas (desativado)
+    video = recognize("uploads/carro.mp4", custom_model)
     events = ListEvents(video)
     callOpenAI(events)
