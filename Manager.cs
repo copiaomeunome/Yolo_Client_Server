@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Net.Http;
-using System.Net.Http.Headers;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Classes.Events;
-using Detection;
+using Classes.Videos;
+using ManagerApp.APIService;
 
 namespace ManagerApp
 {
@@ -15,12 +15,45 @@ namespace ManagerApp
     {
         private static readonly string RootDir = Directory.GetCurrentDirectory();
         private static readonly string PythonDir = Path.Combine(RootDir, "python");
-        private static readonly string PythonScript = Path.Combine(PythonDir, "processPy", "Yolo_Inference.py");
+        private static readonly string PythonScript = Path.Combine(PythonDir, "processPy", "Yolo_Inference.py");                                                                        //CAMINHO DA INFERÊNCIA
+        private const string urlgetnextvd = "http://192.168.10.18:8000/pegatxt";                                                                                                        //URL DO GETNEXTVIDEOAVAILABLE
+        private const string urlPrompt = "https://app2.globalcad.com.br/apiv1/InvokePublicFunc?formContract=2861&token=V15d30OASM4ifSys&uiculture=pt-BR&method=run_prompt";             //URL DO RUN_PROMPT
+        private const string urlPromptState = "https://app2.globalcad.com.br/apiv1/InvokePublicFunc?formContract=2861&token=V15d30OASM4ifSys&uiculture=pt-BR&method=get_prompt_state";   //URL DO PROMPTSTATE
+        private const string onProcessedUrl = "http://192.168.10.18:8000/onVideoProcessingFinished";                                                                                    //URL ONPROCESSEDVIDEO
 
         public static async Task<int> RunAsync(string[] args)
         {
-            LoadEnvFromFile();
-            string videoPath = args.Length > 0 ? args[0] : Path.Combine("uploads", "carro.mp4");
+            var response = CallAPIService.getNextVideoAvailable(urlgetnextvd);
+            var jsonAPI = JsonDocument.Parse(response);
+
+            string codigo = jsonAPI.RootElement.TryGetProperty("cSharpCode", out var codeProp)
+                ? codeProp.GetString() ?? string.Empty
+                : string.Empty;
+
+            int videoID = jsonAPI.RootElement.TryGetProperty("videoId", out var videoIDProp)
+                ? videoIDProp.GetInt32()
+                : 0;
+
+            int handlerID = jsonAPI.RootElement.TryGetProperty("handlerId", out var handlerIDProp)
+                ? handlerIDProp.GetInt32()
+                : 0;
+
+            string videoURL = jsonAPI.RootElement.TryGetProperty("videoUrl", out var videoURLProp)
+                ? videoURLProp.GetString() ?? string.Empty
+                : string.Empty;
+
+            string[] branches = jsonAPI.RootElement.TryGetProperty("branches", out var branchesProp)
+                ? branchesProp
+                    .EnumerateArray()
+                    .Select(e => e.GetString() ?? string.Empty)
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .ToArray()
+                : Array.Empty<string>();
+
+            string videoPath = !string.IsNullOrWhiteSpace(videoURL)
+                ? Path.Combine("uploads", "carro.mp4")              //TROCAR AQUI
+                : Path.Combine("uploads", "carro.mp4");
+            string modelRepoPath = @"C:\Users\heito\OneDrive\Desktop\dev13\DataSetYolo";
             if (!Path.IsPathRooted(videoPath))
             {
                 videoPath = Path.Combine(RootDir, videoPath);
@@ -28,23 +61,31 @@ namespace ManagerApp
 
             try
             {
-                string raw = await RunPythonInferenceAsync(videoPath);
-                var video = ParseVideo(raw);
+                string resultado = await RunPythonInferenceAsync(
+                    videoPath,
+                    modelRepoPath,
+                    branches
+                );
+
+                Video? video = ParseVideo(resultado);
                 if (video == null)
                 {
                     Console.Error.WriteLine("Nao foi possivel interpretar a saida do Yolo_Inference.py como JSON de video.");
                     return 1;
                 }
 
-                var events = VideoEventDetectors.ListEvents(video);
+                var events = EventListBuilder.ListEvents(video, codigo);
 
                 Console.WriteLine("Eventos detectados:");
                 foreach (var ev in events)
                 {
                     Console.WriteLine($"{ev.tInit:0.00}-{ev.tEnd:0.00} | {ev.name}");
                 }
+                var openAIResponse = await CallAPIService.CallOpenAIAsync(urlPrompt, handlerID, events, urlPromptState);
 
-                await CallOpenAIAsync(events);
+                using var timelineDoc = JsonDocument.Parse(openAIResponse);
+                
+                await CallAPIService.onVideoProcessingFinished(onProcessedUrl, videoID, timelineDoc.RootElement, "promptReset");
                 return 0;
             }
             catch (Exception ex)
@@ -54,65 +95,53 @@ namespace ManagerApp
             }
         }
 
-        private static async Task CallOpenAIAsync(List<Event> events)
+        // Roda uma unica inferencia passando todos os modelos (troca de branch apenas para coletar os pesos)
+        private static async Task<string> RunPythonInferenceAsync(
+            string videoPath,
+            string modelRepoPath,
+            string[] branches
+        )
         {
-            string apiKey = (Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? string.Empty).Trim().Trim('\"').Trim('\'');
-            if (string.IsNullOrWhiteSpace(apiKey))
+            var modelPaths = new List<string>();
+            var worktreesToRemove = new List<string>();
+            var existingWorktrees = await GetWorktreesByBranchAsync(modelRepoPath);
+
+            if (branches.Length == 0)
             {
-                Console.Error.WriteLine("OPENAI_API_KEY nao configurada no ambiente.");
-                return;
+                string modelPath = Path.Combine(
+                    modelRepoPath,
+                    "runs", "detect", "train", "weights", "best.pt"
+                );
+                modelPaths.Add(modelPath);
             }
-
-            var payload = BuildPayload(events);
-
-            using var http = new HttpClient();
-            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-
-            var json = JsonSerializer.Serialize(payload);
-            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-
-            var response = await http.PostAsync("https://api.openai.com/v1/chat/completions", content);
-            var responseJson = await response.Content.ReadAsStringAsync();
-
-            Console.WriteLine("Resposta do modelo:");
-            Console.WriteLine(responseJson);
-        }
-
-        /// <summary>
-        /// Le um arquivo .env na raiz e preenche o ambiente se as chaves nao estiverem definidas.
-        /// Suporta linhas no formato KEY=VALUE.
-        /// </summary>
-        private static void LoadEnvFromFile()
-        {
-            string envPath = Path.Combine(RootDir, ".env");
-            if (!File.Exists(envPath))
+            else
             {
-                return;
-            }
-
-            foreach (var line in File.ReadAllLines(envPath))
-            {
-                if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith("#"))
-                    continue;
-
-                int idx = line.IndexOf('=');
-                if (idx <= 0) continue;
-
-                string key = line[..idx].Trim();
-                string value = line[(idx + 1)..].Trim().Trim('\"').Trim('\'');
-
-                if (string.IsNullOrEmpty(key)) continue;
-
-                // So define se ainda nao existir
-                if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(key)))
+                foreach (var branch in branches)
                 {
-                    Environment.SetEnvironmentVariable(key, value);
+                    Console.WriteLine($"Preparando modelo da branch: {branch}");
+
+                    string worktreeDir;
+                    if (existingWorktrees.TryGetValue(branch, out var existingDir))
+                    {
+                        worktreeDir = existingDir;
+                        Console.WriteLine($"Reutilizando worktree existente para {branch} em {worktreeDir}");
+                    }
+                    else
+                    {
+                        worktreeDir = await RunGitWorktreeAddAsync(modelRepoPath, branch);
+                        worktreesToRemove.Add(worktreeDir);
+                    }
+
+                    string modelPath = Path.Combine(worktreeDir, "runs", "detect", "train", "weights", "best.pt");
+                    if (!File.Exists(modelPath))
+                    {
+                        throw new FileNotFoundException($"Modelo nao encontrado na branch {branch}", modelPath);
+                    }
+
+                    modelPaths.Add(modelPath);
                 }
             }
-        }
 
-        private static async Task<string> RunPythonInferenceAsync(string videoPath)
-        {
             var psi = new ProcessStartInfo
             {
                 FileName = "python",
@@ -123,10 +152,16 @@ namespace ManagerApp
             };
 
             psi.Environment["PYTHONPATH"] = PythonDir;
+
             psi.ArgumentList.Add(PythonScript);
             psi.ArgumentList.Add(videoPath);
+            foreach (var modelPath in modelPaths)
+            {
+                psi.ArgumentList.Add(modelPath);
+            }
 
-            var proc = Process.Start(psi) ?? throw new InvalidOperationException("Nao foi possivel iniciar processo do Python.");
+            var proc = Process.Start(psi)
+                ?? throw new InvalidOperationException("Nao foi possivel iniciar processo do Python.");
 
             string stdout = await proc.StandardOutput.ReadToEndAsync();
             string stderr = await proc.StandardError.ReadToEndAsync();
@@ -134,22 +169,136 @@ namespace ManagerApp
 
             if (!string.IsNullOrWhiteSpace(stderr))
             {
-                Console.Error.WriteLine(stderr);
+                Console.Error.WriteLine($"[Python] {stderr}");
             }
 
             if (proc.ExitCode != 0)
             {
-                throw new InvalidOperationException($"Yolo_Inference.py retornou codigo {proc.ExitCode}.");
+                throw new InvalidOperationException("Yolo_Inference.py falhou.");
+            }
+
+            // Limpa worktrees criadas
+            foreach (var wt in worktreesToRemove)
+            {
+                try
+                {
+                    await RunGitWorktreeRemoveAsync(modelRepoPath, wt);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Aviso: falha ao remover worktree {wt}: {ex.Message}");
+                }
             }
 
             return stdout;
+        }
+
+        private static async Task<Dictionary<string, string>> GetWorktreesByBranchAsync(string repoPath)
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "worktree list --porcelain",
+                WorkingDirectory = repoPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            var proc = Process.Start(psi)
+                ?? throw new InvalidOperationException("Nao foi possivel executar git.");
+
+            string stdout = await proc.StandardOutput.ReadToEndAsync();
+            await proc.WaitForExitAsync();
+
+            string currentPath = string.Empty;
+            foreach (var line in stdout.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (line.StartsWith("worktree ", StringComparison.OrdinalIgnoreCase))
+                {
+                    currentPath = line.Substring("worktree ".Length).Trim();
+                }
+                else if (line.StartsWith("branch ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var branchRef = line.Substring("branch ".Length).Trim();
+                    const string prefix = "refs/heads/";
+                    if (branchRef.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        string branchName = branchRef[prefix.Length..];
+                        if (!string.IsNullOrEmpty(currentPath))
+                        {
+                            map[branchName] = currentPath;
+                        }
+                    }
+                }
+            }
+
+            return map;
+        }
+
+        private static async Task<string> RunGitWorktreeAddAsync(string repoPath, string branch)
+        {
+            string worktreeDir = Path.Combine(Path.GetTempPath(), $"model_{branch}_{Guid.NewGuid():N}");
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = $"worktree add \"{worktreeDir}\" {branch}",
+                WorkingDirectory = repoPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            var proc = Process.Start(psi)
+                ?? throw new InvalidOperationException("Nao foi possivel executar git.");
+
+            string stderr = await proc.StandardError.ReadToEndAsync();
+            await proc.WaitForExitAsync();
+
+            if (proc.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"Erro ao preparar worktree para branch {branch}: {stderr}");
+            }
+
+            return worktreeDir;
+        }
+
+        private static async Task RunGitWorktreeRemoveAsync(string repoPath, string worktreeDir)
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = $"worktree remove --force \"{worktreeDir}\"",
+                WorkingDirectory = repoPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            var proc = Process.Start(psi)
+                ?? throw new InvalidOperationException("Nao foi possivel executar git.");
+
+            string stderr = await proc.StandardError.ReadToEndAsync();
+            await proc.WaitForExitAsync();
+
+            if (proc.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"Erro ao remover worktree {worktreeDir}: {stderr}");
+            }
         }
 
         private static Video? ParseVideo(string json)
         {
             var options = new JsonSerializerOptions
             {
-                PropertyNameCaseInsensitive = true
+                PropertyNameCaseInsensitive = true,
+                IncludeFields = true
             };
 
             try
@@ -161,73 +310,6 @@ namespace ManagerApp
                 Console.Error.WriteLine($"Erro ao desserializar o JSON do video: {ex.Message}");
                 return null;
             }
-        }
-
-        private static object BuildPayload(List<Event> events)
-        {
-            var logStruct = new List<object>();
-
-            foreach (var ev in events)
-            {
-                logStruct.Add(new
-                {
-                    tInit = Math.Round(ev.tInit, 2),
-                    tEnd = Math.Round(ev.tEnd, 2),
-                    name = ev.name
-                });
-            }
-
-            string logAsText = JsonSerializer.Serialize(logStruct, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            });
-
-            string systemPrompt = """
-            Voce e um analista de transito.
-
-            Objetivo: Dado um log JSON de eventos (nomes em portugues), decidir para cada veiculo se ele atravessou um sinal vermelho. Use apenas as evidencias no log. Sempre responda somente com um array JSON; nenhum texto extra.
-
-            EVENTOS IMPORTANTES (nomes aparecem exatamente como no log):
-            - "<obj> <id> tempo em cena" -> objeto esteve presente de tInit ate tEnd.
-            - "<objA> <idA> tempo de alinhamento com <objB> <idB>" ou "tempo de sobreposicao" -> centro alinhado ou caixas sobrepostas entre os objetos.
-            - "Sinal vermelho saiu pelo topo (ID X)" -> o semaforo vermelho X desapareceu pelo topo do quadro; use como evidencia de que o sinal vermelho foi ultrapassado naquele momento.
-
-            REGRAS DE INTERPRETACAO:
-            1) Veiculos costumam aparecer como "carro", "car", "veiculo" (ou similares) seguidos de um id.
-            2) Se um veiculo esta em cena quando ocorre "Sinal vermelho saiu pelo topo", considere forte evidencia de que ele avancou o sinal. Se o veiculo surge imediatamente antes e permanece enquanto o evento ocorre, trate como violacao.
-            3) Se o veiculo entra apenas depois que o vermelho ja saiu ha algum tempo, marque como "inconclusivo" (nao e possivel afirmar).
-            4) Caso nao haja qualquer evento de vermelho, devolva "inconclusivo" para todos.
-            5) Sempre liste as evidencias como as strings de evento originais, em ordem cronologica, e use "inconclusivo" quando faltarem dados claros.
-
-            FORMATO DE SAIDA (array JSON):
-            - "veiculo": nome/id do veiculo (ex.: "carro 3").
-            - "passou_sinal_vermelho": true | false | "inconclusivo".
-            - "evidencias": lista minima de strings do log que sustentam a conclusao, em ordem temporal.
-            - "notas": justificativa curta em uma frase.
-
-            Nenhum outro texto alem do array JSON.
-            """;
-
-            string userMessage = $"""
-            Aqui esta o log de eventos extraido do video (array JSON).
-            Decida, seguindo as regras acima, se algum veiculo avancou o sinal vermelho e responda somente com o array JSON.
-
-            Log:
-            {logAsText}
-            """;
-
-            return new
-            {
-                model = "gpt-4.1-mini",
-                messages = new[]
-                {
-                    new { role = "system", content = systemPrompt },
-                    new { role = "user", content = userMessage }
-                },
-                temperature = 0.0,
-                max_tokens = 1000
-            };
         }
     }
 }

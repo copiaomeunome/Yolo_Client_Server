@@ -1,9 +1,12 @@
 {
   "version": 2,
-  "dgSpecHash": "c87/fQPMf0k=",
+  "dgSpecHash": "1U342rt+NoE=",
   "success": true,
   "projectFilePath": "C:\\Users\\heito\\OneDrive\\Desktop\\dev13\\Yolo_Client_Server\\ManagerRunner\\ManagerRunner.csproj",
   "expectedPackageFiles": [
+    "C:\\Users\\heito\\.nuget\\packages\\microsoft.codeanalysis.analyzers\\3.11.0\\microsoft.codeanalysis.analyzers.3.11.0.nupkg.sha512",
+    "C:\\Users\\heito\\.nuget\\packages\\microsoft.codeanalysis.common\\5.0.0\\microsoft.codeanalysis.common.5.0.0.nupkg.sha512",
+    "C:\\Users\\heito\\.nuget\\packages\\microsoft.codeanalysis.csharp\\5.0.0\\microsoft.codeanalysis.csharp.5.0.0.nupkg.sha512",
     "C:\\Users\\heito\\.nuget\\packages\\microsoft.ml.onnxruntime\\1.18.1\\microsoft.ml.onnxruntime.1.18.1.nupkg.sha512",
     "C:\\Users\\heito\\.nuget\\packages\\microsoft.ml.onnxruntime.managed\\1.18.1\\microsoft.ml.onnxruntime.managed.1.18.1.nupkg.sha512",
     "C:\\Users\\heito\\.nuget\\packages\\opencvsharp4\\4.10.0.20240616\\opencvsharp4.4.10.0.20240616.nupkg.sha512",

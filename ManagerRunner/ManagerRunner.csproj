@@ -8,12 +8,18 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\Manager.cs" />
-    <Compile Include="..\Csharp\processCsharp\Models.cs" />
+    <Compile Include="..\Csharp\processCsharp\ListEvents.cs" />
     <Compile Include="..\Csharp\processCsharp\VideoEventDetectors.cs" />
     <Compile Include="..\Csharp\Classes\Event.cs" />
+    <Compile Include="..\Csharp\Classes\Video.cs" />
+    <Compile Include="..\Csharp\Classes\Frame.cs" />
+    <Compile Include="..\Csharp\Classes\Obj.cs" />
+    <Compile Include="..\Csharp\Classes\Point.cs" />
+    <Compile Include="..\Csharp\processCsharp\Call_API.cs" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.18.1" />
     <PackageReference Include="OpenCvSharp4" Version="4.10.0.20240616" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.10.0.20240616" />

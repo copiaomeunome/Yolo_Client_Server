@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ManagerRunner", "ManagerRunner\ManagerRunner.csproj", "{8C02EFE3-87E2-8106-0DB0-F93CBCBFC6CA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VideoEventCli", "VideoEventCli\VideoEventCli.csproj", "{B3F6CBF6-DAFF-D1FF-CACF-B7033E5808FD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8C02EFE3-87E2-8106-0DB0-F93CBCBFC6CA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8C02EFE3-87E2-8106-0DB0-F93CBCBFC6CA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8C02EFE3-87E2-8106-0DB0-F93CBCBFC6CA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8C02EFE3-87E2-8106-0DB0-F93CBCBFC6CA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B3F6CBF6-DAFF-D1FF-CACF-B7033E5808FD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B3F6CBF6-DAFF-D1FF-CACF-B7033E5808FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B3F6CBF6-DAFF-D1FF-CACF-B7033E5808FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B3F6CBF6-DAFF-D1FF-CACF-B7033E5808FD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {BA0BC23D-2FF5-4EDA-BE0B-611C55ADD9C9}
+	EndGlobalSection
+EndGlobal

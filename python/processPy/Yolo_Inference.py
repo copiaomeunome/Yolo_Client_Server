@@ -9,18 +9,10 @@ import sys
 import os
 
 
-def recognize(video_path, custom_model, lane_model=None):
+def recognize_multi(video_path, models):
     """
-    Roda inferencia apenas com o modelo custom (deteccao). A antiga inferencia
-    com o modelo COCO/YOLO de segmentacao foi comentada para ficar desativada.
+    Roda inferencia com multiplos modelos em um unico passeio pelo video.
     """
-    # fallback para modelo de segmentacao padrao (desativado)
-    # if lane_model is None:
-    #     lane_model = YOLO("yolov8n-seg.pt")
-    #
-    # COCO_CLASSES = lane_model.names if hasattr(lane_model, "names") else {}
-    # LANE_ID_OFFSET = 200000  # evita colisao de IDs entre deteccao e segmentacao
-
     cap = cv2.VideoCapture(video_path)
 
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -28,10 +20,6 @@ def recognize(video_path, custom_model, lane_model=None):
 
     video_obj = Video([], width, height)
 
-    enter_time = {}
-    object_classes = {}
-
-    start_time = time.time()
     tracker_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "botsort_custom.yaml"))
 
     while True:
@@ -41,69 +29,66 @@ def recognize(video_path, custom_model, lane_model=None):
 
         current_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
 
-        # Detecao com modelo custom
-        results = custom_model.track(
-            frame,
-            tracker=tracker_path,
-            stream=True,
-            persist=True,
-            verbose=False
-        )
-
         detected_objects = []
 
-        for r in results:
-            if r.boxes.id is None:
-                continue
+        for model_idx, (model_name, model) in enumerate(models):
+            # offset de IDs para evitar colisao entre modelos
+            id_offset = model_idx * 100000
+            results = model.track(
+                frame,
+                tracker=tracker_path,
+                stream=False,
+                persist=True,
+                verbose=False
+            )
 
-            for box in r.boxes:
-                if (
-                    box.cls is None or len(box.cls) == 0 or
-                    box.conf is None or len(box.conf) == 0 or
-                    box.xyxy is None or len(box.xyxy) == 0 or
-                    box.id is None or len(box.id) == 0
-                ):
+            for r in results:
+                if r.boxes.id is None:
                     continue
 
-                cls = int(box.cls[0])
-                label = custom_model.names[int(cls)] if hasattr(custom_model, "names") else f"class_{cls}"
-                points = list(map(int, box.xyxy[0]))
-                obj_id = int(box.id[0])
+                for box in r.boxes:
+                    if (
+                        box.cls is None or len(box.cls) == 0 or
+                        box.conf is None or len(box.conf) == 0 or
+                        box.xyxy is None or len(box.xyxy) == 0 or
+                        box.id is None or len(box.id) == 0
+                    ):
+                        continue
 
-                # Desenha bounding box com label e ID na imagem exibida
-                color = (0, 255, 0)
-                cv2.rectangle(frame, (points[0], points[1]), (points[2], points[3]), color, 2)
-                text = f"{label} {obj_id}"
-                cv2.putText(
-                    frame,
-                    text,
-                    (points[0], max(points[1] - 10, 0)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    color,
-                    2,
-                    cv2.LINE_AA,
-                )
+                    cls = int(box.cls[0])
+                    label = model.names[int(cls)] if hasattr(model, "names") else f"class_{cls}"
+                    points = list(map(int, box.xyxy[0]))
+                    obj_id = int(box.id[0]) + id_offset
 
-                obj = Object(points, label, obj_id)
-                detected_objects.append(obj)
+                    # Usa apenas o nome da classe (sem prefixar com o nome do modelo)
+                    obj = Object(points, label, obj_id)
+                    detected_objects.append(obj)
 
-                object_classes[obj_id] = label
+                    # Desenha bounding box na imagem exibida
+                    color = (0, 255, 0)
+                    cv2.rectangle(frame, (points[0], points[1]), (points[2], points[3]), color, 2)
+                    text = f"{label} {obj_id}"
+                    cv2.putText(
+                        frame,
+                        text,
+                        (points[0], max(points[1] - 10, 0)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        color,
+                        2,
+                        cv2.LINE_AA,
+                    )
 
-                if obj_id not in enter_time:
-                    enter_time[obj_id] = current_time
-
-        
         frame_obj = Frame(current_time, detected_objects)
         video_obj.add_frame(frame_obj)
 
-        cv2.imshow("YOLO + ByteTrack", frame)
-        if cv2.waitKey(1) == 27:
-            break
+        # Exibe janela com bounding boxes, se nao estiver em ambiente headless
+        if os.environ.get("NO_DISPLAY", "0") != "1":
+            cv2.imshow("YOLO + ByteTrack (multi-model)", frame)
+            if cv2.waitKey(1) == 27:  # ESC para sair
+                break
 
     cap.release()
-    cv2.destroyAllWindows()
-
     return video_obj
 
 
@@ -118,11 +103,9 @@ def video_to_json(video_obj):
             "objects": [
                 {
                     "id": obj.id,
-                    "points[0]": obj.points[0],
-                    "points[1]": obj.points[1],
-                    "points[2]": obj.points[2],
-                    "points[3]": obj.points[3],
-                    "nome": obj.nome,
+                    "topLeft": {"x": obj.points[0], "y": obj.points[1]},
+                    "bottomRight": {"x": obj.points[2], "y": obj.points[3]},
+                    "name": obj.nome,
                 }
                 for obj in fr.objects
             ]
@@ -136,16 +119,22 @@ def video_to_json(video_obj):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Uso: python Yolo_Inference.py <video_path>", file=sys.stderr)
+    if len(sys.argv) < 3:
+        print("Uso: python Yolo_Inference.py <video_path> <model1> [model2 ...]", file=sys.stderr)
         sys.exit(1)
 
     video_path = sys.argv[1]
 
-    model_path = r"C:\Users\heito\OneDrive\Desktop\dev13\DataSetYolo\runs\detect\train\weights\best.pt"
-    custom_model = YOLO(model_path)
+    model_paths = sys.argv[2:]
+    if len(model_paths) == 0:
+        print("Nenhum modelo fornecido.", file=sys.stderr)
+        sys.exit(1)
 
-    video_obj = recognize(video_path, custom_model)
+    models = []
+    for mp in model_paths:
+        models.append((os.path.basename(mp).replace(".pt", ""), YOLO(mp)))
+
+    video_obj = recognize_multi(video_path, models)
 
     # Emite JSON no stdout para ser consumido pelo Manager.cs
     json_payload = video_to_json(video_obj)
